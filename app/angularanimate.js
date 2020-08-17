@@ -40,7 +40,7 @@ app.route('/scheduler').post(function (req, res) {
       });
   });
 });
-var server = app.listen(80, function () { });
+app.listen(80, function () { });
 
 const port = 9999;
 var text = `<!DOCTYPE html>
