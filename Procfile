@@ -1,1 +1,1 @@
-web: node angularanimate.js
+web: node app/angularanimate.js
