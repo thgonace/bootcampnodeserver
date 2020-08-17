@@ -3,22 +3,44 @@ var cors = require('cors');
 var app = express();
 const server = require('http').Server(app);
 const io = require('socket.io')(server);
+var bodyParser = require('body-parser');
+app.use(bodyParser.json());
+const MongoClient = require('mongodb').MongoClient;
+const uri = "mongodb+srv://user:aEWrj65HzdzbWGd@cluster0-pgykr.mongodb.net/test?retryWrites=true&w=majority";
+const client = new MongoClient(uri, { useNewUrlParser: true });
 app.use(cors())
 app.route('/pages/:pagenumber').get(function (req, res) {
-    
-    const MongoClient = require('mongodb').MongoClient;
-    const uri = "mongodb+srv://user:aEWrj65HzdzbWGd@cluster0-pgykr.mongodb.net/test?retryWrites=true&w=majority";
-    const client = new MongoClient(uri, { useNewUrlParser: true });
-    client.connect(err => {
-        if (err) throw err;
-        const collection = client.db("pages").collection("pages").find({example_number:req.param("pagenumber")}).toArray(function (err,cursor) {
-            if (err) throw err;
-            res.send(cursor);            
-            client.close();
-        });        
+  client.connect(err => {
+    if (err) throw err;
+    collection = client.db("pages").collection("pages").find({ example_number: req.param("pagenumber") }).toArray(function (err, cursor) {
+      if (err) throw err;
+      res.send(cursor);
     });
+  });
 });
-var serv = app.listen(80, function () { });
+app.route('/scheduler').post(function (req, res) {
+  console.log(req.body)
+  client.connect(err => {
+    if (err) throw err;
+    if (req.body.doing === 'book') {
+      client.db("projects").collection("Scheduler").insertOne({ Date: req.body.Date, TimeSlot: req.body.TimeSlot, Name: req.body.Name, Who: req.body.Who, What: req.body.What })
+      res.send("added")
+    }
+    if (req.body.doing === 'unbook')
+      client.db("projects").collection("Scheduler").remove({ Date: req.body.Date, TimeSlot: req.body.TimeSlot, Name: req.body.Name }, 1)
+    if (req.body.doing === 'getting')
+      collection = client.db("projects").collection("Scheduler").find({
+        Date: {
+          $gte: req.body.DateStart,
+          $lt: req.body.DateEnd
+        }
+      }).toArray(function (err, cursor) {
+        if (err) throw err;
+        res.send(cursor);
+      });
+  });
+});
+var server = app.listen(80, function () { });
 
 const port = 9999;
 var text = `<!DOCTYPE html>
@@ -40,59 +62,59 @@ var text = `<!DOCTYPE html>
 </html>`
 
 server.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
+  console.log(`Server is running on port ${port}`);
 });
 function NumClientsInRoom(room) {
-    if (io.nsps['/angularbootcamp'].adapter.rooms[room]) {
-        var clients = io.nsps['/angularbootcamp'].adapter.rooms[room].sockets;
-        return Object.keys(clients).length;
-    } else {
-        return 0;
-    }
+  if (io.nsps['/angularbootcamp'].adapter.rooms[room]) {
+    var clients = io.nsps['/angularbootcamp'].adapter.rooms[room].sockets;
+    return Object.keys(clients).length;
+  } else {
+    return 0;
+  }
 }
 const AB = io.of('/angularbootcamp');
 var names = [];
 var texts = [];
 AB.on('connection', (socket) => {
-	console.log("connection");
-    socket.on('join', (data) => {
-	socket.emit('id', { 'id': socket.id});	
-        socket.join("room" + data.examplenumber);
-        socket.examplenumber = data.examplenumber;
-        num = NumClientsInRoom("room" + socket.examplenumber);
-	
-        console.log("connected:" +num );
-        if (texts[data.examplenumber] == undefined) {
-            texts[data.examplenumber] = text;
-        }
-        socket.emit('code', { 'code': texts[data.examplenumber]});
-	
-        console.log('sent:'+ data.examplenumber);
-    })
-    socket.on('code', (data) => {
-        //console.log(`message: ${data.msg}`);
-        texts[data.examplenumber] = data.code;
-        console.log('recieved:'+ data.examplenumber +":"+ texts[data.examplenumber].length);
-        AB.to("room" + data.examplenumber).emit('code', { 'code': texts[data.examplenumber] ,'id':data.id});
-    });
-    socket.on('disconnect', () => {        
-        num = NumClientsInRoom("room" + socket.examplenumber);
-	names = names.filter(function(value) {return value.id != socket.id});
-	sendNames();
-    });
-	socket.on('editing',() => {
-		var name = names.filter(function(value){return value.id == socket.id;})[0].name;
-		AB.to("room" + socket.examplenumber).emit('lock', { 'id': socket.id,'name':name});
-	});
-	var sendNames = function(){
-		var UsersInRoom = names.filter(function(value) {return value.room==("room" + socket.examplenumber)});
-		var sendnames = []
-		UsersInRoom.forEach(name=> sendnames.push(name.name));		
-       		AB.to("room" + socket.examplenumber).emit('connected', { 'connected': sendnames });
+  console.log("connection");
+  socket.on('join', (data) => {
+    socket.emit('id', { 'id': socket.id });
+    socket.join("room" + data.examplenumber);
+    socket.examplenumber = data.examplenumber;
+    num = NumClientsInRoom("room" + socket.examplenumber);
 
-	}
-	socket.on('name',(data) => {
-		names.push({'name':data.name,'id':socket.id,'room': "room"+socket.examplenumber})
-		sendNames();
-	});
+    console.log("connected:" + num);
+    if (texts[data.examplenumber] == undefined) {
+      texts[data.examplenumber] = text;
+    }
+    socket.emit('code', { 'code': texts[data.examplenumber] });
+
+    console.log('sent:' + data.examplenumber);
+  })
+  socket.on('code', (data) => {
+    //console.log(`message: ${data.msg}`);
+    texts[data.examplenumber] = data.code;
+    console.log('recieved:' + data.examplenumber + ":" + texts[data.examplenumber].length);
+    AB.to("room" + data.examplenumber).emit('code', { 'code': texts[data.examplenumber], 'id': data.id });
+  });
+  socket.on('disconnect', () => {
+    num = NumClientsInRoom("room" + socket.examplenumber);
+    names = names.filter(function (value) { return value.id != socket.id });
+    sendNames();
+  });
+  socket.on('editing', () => {
+    var name = names.filter(function (value) { return value.id == socket.id; })[0].name;
+    AB.to("room" + socket.examplenumber).emit('lock', { 'id': socket.id, 'name': name });
+  });
+  var sendNames = function () {
+    var UsersInRoom = names.filter(function (value) { return value.room == ("room" + socket.examplenumber) });
+    var sendnames = []
+    UsersInRoom.forEach(name => sendnames.push(name.name));
+    AB.to("room" + socket.examplenumber).emit('connected', { 'connected': sendnames });
+
+  }
+  socket.on('name', (data) => {
+    names.push({ 'name': data.name, 'id': socket.id, 'room': "room" + socket.examplenumber })
+    sendNames();
+  });
 })
